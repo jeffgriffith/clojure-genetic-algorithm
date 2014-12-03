@@ -9,6 +9,8 @@
 (defn new-bit-string-chromosome [size] 
   (take size (random-bits)))
 
+(defn bit-mutation? [] (< (rand) 0.001))
+
 ;
 ; Infinite lazy seq of chromosomes
 ;
@@ -47,11 +49,11 @@
 
 (defn flip-bit [bit] (if (= bit 0) 1 0))
 
-(defn mutate-bit [bit bit-mutation?]
+(defn mutate-bit [bit]
   (if (bit-mutation?) (flip-bit bit) bit))
 
-(defn mutate-chromosome [chromosome bit-mutation?]
-  (map #(mutate-bit % bit-mutation?) chromosome))
+(defn mutate-chromosome [chromosome]
+  (map mutate-bit chromosome))
 
 ; clen=6
 ; 012345
@@ -86,8 +88,9 @@
   combine. Apply the mutation and crossover functions
   and return the result."
   [chromosome-source mutation-func crossover-func]
-  (let [pair (crossover-chromosomes-randomly (chromosome-source) (chromosome-source))]
-    (mutation-func (nth pair 0) (nth pair 1))))
+  (crossover-chromosomes-randomly
+    (mutation-func (chromosome-source))
+    (mutation-func (chromosome-source))))
 
 ;
 ; All-ones GA
@@ -105,8 +108,6 @@
 (defn count-ones-score-fitness [coll]
   (count-occurrences coll 1))
 
-(defn bit-mutation? [rate] (< (rand) rate))
-
 ;
 ; Build a new population of the same size with combined mutants
 ; chosen (favoring the most fit) from the given population.
@@ -114,12 +115,15 @@
 ;
 (defn next-generation [population]
   (let [pop-size (count population) tot-fitness (sum-fitnesses population)]
-    (println "pop-size " pop-size " tot-fitness " tot-fitness)
+    ;(println "pop-size " pop-size " tot-fitness " tot-fitness)
     (defn chromosome-source [] (:chr (spin-roulette-wheel tot-fitness population)))
-    (loop [i 0 coll ()] 
-      (if (>= i pop-size)
+    (loop [i 0 coll nil] 
+      (if (>= i (/ pop-size 2))
         coll
-        (recur (inc i) (conj coll (make-offspring chromosome-source mutate-chromosome crossover-chromosomes-randomly)))))))
+        (do
+          (def offspring (make-offspring chromosome-source mutate-chromosome crossover-chromosomes-randomly))
+          (recur (inc i) (conj coll (nth offspring 0) (nth offspring 1))))))))
+
 
 ;;
 ;; UTILITIES
@@ -131,16 +135,30 @@
       (println "Chromosome: " (:chr (first p)) " Fitness: " (:fitness (first p)))
       (recur (rest p)))))
 
+(defn score-chromosomes [score-fitness chromosomes]
+  (loop [c chromosomes coll nil]
+    (if (empty? c)
+      coll
+      (recur (rest c) (conj coll { :chr (first c) :fitness (score-fitness (first c)) })))))
+
 ;
 ; Run the algorithm
 ;
 (defn ga [num-generations population]
   (sort-pop
     (loop [gen 0 p population]
-      (if (>= gen num-generations) p (recur (inc gen) (next-generation (sort-pop p)))))))
+      (if (>= gen num-generations) p (recur (inc gen) (score-chromosomes count-ones-score-fitness (next-generation (sort-pop p))))))))
 
-(def orig-pop (sort-pop (new-bitstring-population 10 5 count-ones-score-fitness)))
-(print-pop orig-pop)
-(print-pop (next-generation orig-pop))
+(do
+  (def chrom-len 100)
+  (def pop-size 10)
+  (def num-generations 5000)
+  (def orig-pop (sort-pop (new-bitstring-population pop-size pop-size count-ones-score-fitness)))
+  (print-pop orig-pop)
+  (print-pop (ga num-generations orig-pop)))
+
+(defn chromosome-source [] (:chr (spin-roulette-wheel 27 orig-pop)))
+(chromosome-source)
+(println (make-offspring chromosome-source mutate-chromosome crossover-chromosomes-randomly))
 
 
